@@ -1,3 +1,6 @@
+use std::sync::Mutex;
+use std::fs;
+
 use tendermint_abci::ServerBuilder;
 use tendermint_proto::abci::{
     RequestInfo, ResponseInfo, 
@@ -53,12 +56,20 @@ impl Application for KeyValueStore {
     // }
 
     fn commit(&self) -> ResponseCommit {
-        ResponseCommit::default()
+        let storage = self.storage.lock().unwrap();
+        let serialized = serde_json::to_string(&*storage).expect("Failed to serialize data");
+            fs::write("app_state.json", serialized).expect("Unable to write to file");
+        ResponseCommit::default()   
     }
 }
 
 #[tokio::main]
 async fn main() {
+    let initial_state = match fs::read_to_string("app_state.json") {
+        Ok(data) => serde_json::from_str(&data).expect("Failed to deserialize data"),
+        Err(_) => HashMap::new(),
+    };
+
     let app = KeyValueStore {
         storage: HashMap::new(),
     };
