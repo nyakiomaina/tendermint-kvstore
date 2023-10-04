@@ -1,4 +1,4 @@
-use tendermint_proto::v0_34::abci::{
+use tendermint_proto::abci::{
     RequestInfo, ResponseInfo, 
     RequestQuery, ResponseQuery, 
     RequestCheckTx, ResponseCheckTx, 
@@ -8,35 +8,33 @@ use tendermint_proto::v0_34::abci::{
 use std::collections::HashMap;
 use tendermint_abci::Application;
 
-
 #[derive(Clone)]
 struct KeyValueStore {
-    storage: HashMap<String, String>,
+    _storage: HashMap<String, String>,
 }
 
 impl Application for KeyValueStore {
-    fn info(&self, _req: &RequestInfo) -> ResponseInfo {
-        ResponseInfo::new()
+    fn info(&self, _req: RequestInfo) -> ResponseInfo {
+        ResponseInfo::default()
     }
     
-    fn query(&self, _req: &RequestQuery) -> ResponseQuery {
-        ResponseQuery::new()
+    fn query(&self, _req: RequestQuery) -> ResponseQuery {
+        ResponseQuery::default()
     }
 
-    fn check_tx(&self, _req: &RequestCheckTx) -> ResponseCheckTx {
-        ResponseCheckTx::new()
+    fn check_tx(&self, _req: RequestCheckTx) -> ResponseCheckTx {
+        ResponseCheckTx::default()
     }
 
     fn commit(&self) -> ResponseCommit {
-        ResponseCommit::new()
+        ResponseCommit::default()
     }
-
 }
 
 #[tokio::main]
 async fn main() {
-    let app = KeyValueStore {
-        storage: HashMap::new(),
+    let _app = KeyValueStore {
+        _storage: HashMap::new(),
     };
    // todo: server implementation
 }
