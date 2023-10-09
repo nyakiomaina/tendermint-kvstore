@@ -1,5 +1,6 @@
 use std::sync::Mutex;
 use std::fs;
+use serde::{Serialize, Deserialize};
 
 use tendermint_abci::ServerBuilder;
 use tendermint_proto::abci::{
@@ -9,12 +10,13 @@ use tendermint_proto::abci::{
     ResponseCommit,
 };
 
+// use tendermint_proto::v0_37::abci::{RequestDeliverTx, ResponseDeliverTx};
 use std::collections::HashMap;
 use tendermint_abci::Application;
-// use tendermint_proto::v0_34::proto::v0_37::abci::RequestDeliverTx;
-#[derive(Clone)]
+
+#[derive(Debug, Serialize, Deserialize)]
 struct KeyValueStore {
-    storage: HashMap<String, String>,
+    storage: Mutex<HashMap<String, String>>
 }
 
 impl Application for KeyValueStore {
@@ -24,7 +26,7 @@ impl Application for KeyValueStore {
     
     fn query(&self, req: RequestQuery) -> ResponseQuery {
         let key = String::from_utf8_lossy(&req.data).to_string();
-        match self.storage.get(&key) {
+        match self.storage.lock().unwrap().get(&key) {
             Some(value) => {
                 let mut response = ResponseQuery::default();
                 response.value = value.clone().into_bytes().into();
@@ -44,34 +46,47 @@ impl Application for KeyValueStore {
             ResponseCheckTx::default()
         }
     }
+    // fn deliver_tx(&self, req: RequestDeliverTx) -> ResponseDeliverTx {
+    //     let data_str = String::from_utf8_lossy(&req.tx);
+    //     let parts: Vec<&str> = data_str.split('=').collect();
 
-    // fn deliver_tx(&self, req: RequestDeliverTx) -> RequestDeliverTx {
-    //     let parts: Vec<&[u8]> = req.tx.split(|b| *b == b'=').collect();
     //     if parts.len() == 2 {
-    //         let key = String::from_utf8_lossy(parts[0]);
-    //         let value = String::from_utf8_lossy(parts[1]);
-    //         self.storage.insert(key.to_string(), value.to_string());
+    //         let user_id = parts[0].trim().to_string();
+    //         let profile_data = parts[1].trim().to_string();
+
+    //         let mut storage_guard = self.storage.lock().unwrap();
+    //         storage_guard.insert(user_id, profile_data);
     //     }
+
     //     ResponseDeliverTx::default()
     // }
 
     fn commit(&self) -> ResponseCommit {
-        let storage = self.storage.lock().unwrap();
-        let serialized = serde_json::to_string(&*storage).expect("Failed to serialize data");
-            fs::write("app_state.json", serialized).expect("Unable to write to file");
+        let storage_guard = self.storage.lock().unwrap();
+        let serialized = serde_json::to_string(&*storage_guard).expect("Failed to serialize data");
+        fs::write("app_state.json", serialized).expect("Unable to write to file");
+        
         ResponseCommit::default()   
+    }
+}
+
+impl Clone for KeyValueStore {
+    fn clone(&self) -> Self {
+        KeyValueStore {
+            storage: Mutex::new(self.storage.lock().unwrap().clone())
+        }
     }
 }
 
 #[tokio::main]
 async fn main() {
-    let initial_state = match fs::read_to_string("app_state.json") {
-        Ok(data) => serde_json::from_str(&data).expect("Failed to deserialize data"),
-        Err(_) => HashMap::new(),
-    };
+    // let initial_state = match fs::read_to_string("app_state.json") {
+    //     Ok(data) => serde_json::from_str(&data).expect("Failed to deserialize data"),
+    //     Err(_) => HashMap::new(),
+    // };
 
     let app = KeyValueStore {
-        storage: HashMap::new(),
+        storage: Mutex::new(HashMap::new()),
     };
    // server implementation
    let server_builder = ServerBuilder::default();
