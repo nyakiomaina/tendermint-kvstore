@@ -1,3 +1,5 @@
+extern crate backtrace;
+
 use std::sync::Mutex;
 use std::fs;
 use serde::{Serialize, Deserialize};
@@ -9,7 +11,7 @@ use tendermint_proto::abci::{
     RequestCheckTx, ResponseCheckTx, 
     ResponseCommit,
 };
-use tendermint_proto::v0_37::abci::{RequestDeliverTx, ResponseDeliverTx};
+// use tendermint_proto::v0_37::abci::{RequestDeliverTx, ResponseDeliverTx};
 use std::collections::HashMap;
 #[derive(Debug, Serialize, Deserialize)]
 struct KeyValueStore {
@@ -23,15 +25,20 @@ impl Application for KeyValueStore {
     
     fn query(&self, req: RequestQuery) -> ResponseQuery {
         let key = String::from_utf8_lossy(&req.data).to_string();
-        match self.storage.lock().unwrap().get(&key) {
+        let storage_guard = match self.storage.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        match storage_guard.get(&key) {
             Some(value) => {
                 let mut response = ResponseQuery::default();
                 response.value = value.clone().into_bytes().into();
                 response
-            }
+            },
             None => ResponseQuery::default(),
         }
     }
+    
 
     fn check_tx(&self, req: RequestCheckTx) -> ResponseCheckTx {
         if req.tx.is_empty() {
@@ -43,28 +50,38 @@ impl Application for KeyValueStore {
             ResponseCheckTx::default()
         }
     }
-     fn deliver_tx(&self, req: RequestDeliverTx) -> ResponseDeliverTx {
-         let data_str = String::from_utf8_lossy(&req.tx);
-         let parts: Vec<&str> = data_str.split('=').collect();
+    //  fn deliver_tx(&self, req: RequestDeliverTx) -> ResponseDeliverTx {
+    //      let data_str = String::from_utf8_lossy(&req.tx);
+    //      let parts: Vec<&str> = data_str.split('=').collect();
 
-         if parts.len() == 2 {
-             let user_id = parts[0].trim().to_string();
-             let profile_data = parts[1].trim().to_string();
+    //      if parts.len() == 2 {
+    //          let user_id = parts[0].trim().to_string();
+    //          let profile_data = parts[1].trim().to_string();
 
-             let mut storage_guard = self.storage.lock().unwrap();
-             storage_guard.insert(user_id, profile_data);
-         }
+    //          let mut storage_guard = self.storage.lock().unwrap();
+    //          storage_guard.insert(user_id, profile_data);
+    //      }
 
-         ResponseDeliverTx::default()
-     }
+    //      ResponseDeliverTx::default()
+    //  }
 
     fn commit(&self) -> ResponseCommit {
-        let storage_guard = self.storage.lock().unwrap();
-        let serialized = serde_json::to_string(&*storage_guard).expect("Failed to serialize data");
-        fs::write("app_state.json", serialized).expect("Unable to write to file");
-        
+        match self.storage.lock() {
+            Ok(storage_guard) => {
+                match serde_json::to_string(&*storage_guard) {
+                    Ok(serialized) => {
+                        if let Err(e) = fs::write("app_state.json", serialized) {
+                            println!("Error writing to file: {}", e);
+                        }
+                    },
+                    Err(e) => println!("Failed to serialize data: {}", e),
+                }
+            },
+            Err(poisoned) => println!("Mutex poisoned: {:?}", poisoned),
+        }
         ResponseCommit::default()   
     }
+    
 }
 
 impl Clone for KeyValueStore {
@@ -77,17 +94,21 @@ impl Clone for KeyValueStore {
 
 #[tokio::main]
 async fn main() {
-    // let initial_state = match fs::read_to_string("app_state.json") {
-    //     Ok(data) => serde_json::from_str(&data).expect("Failed to deserialize data"),
-    //     Err(_) => HashMap::new(),
-    // };
+    // Set the panic hook first
+    std::panic::set_hook(Box::new(|info| {
+        println!("Panic occurred: {:?}", info);
+        let bt = backtrace::Backtrace::new();
+        println!("{:?}", bt);
+    }));
 
     let app = KeyValueStore {
         storage: Mutex::new(HashMap::new()),
     };
-   // server implementation
-   let server_builder = ServerBuilder::default();
-   let server = server_builder.bind("127.0.0.1:26658", app).expect("Failed to binf server to address");
 
-   server.listen().expect("Failed to listen for connections");
+    // server implementation
+    let server_builder = ServerBuilder::default();
+    let server = server_builder.bind("127.0.0.1:26658", app)
+                                .expect("Failed to bind server to address");
+
+    server.listen().expect("Failed to listen for connections");
 }
