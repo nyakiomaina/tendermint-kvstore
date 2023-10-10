@@ -2,18 +2,15 @@ use std::sync::Mutex;
 use std::fs;
 use serde::{Serialize, Deserialize};
 
-use tendermint_abci::ServerBuilder;
+use tendermint_abci::{ServerBuilder, Application};
 use tendermint_proto::abci::{
     RequestInfo, ResponseInfo, 
     RequestQuery, ResponseQuery, 
     RequestCheckTx, ResponseCheckTx, 
     ResponseCommit,
 };
-
-// use tendermint_proto::v0_37::abci::{RequestDeliverTx, ResponseDeliverTx};
+use tendermint_proto::v0_37::abci::{RequestDeliverTx, ResponseDeliverTx};
 use std::collections::HashMap;
-use tendermint_abci::Application;
-
 #[derive(Debug, Serialize, Deserialize)]
 struct KeyValueStore {
     storage: Mutex<HashMap<String, String>>
@@ -46,20 +43,20 @@ impl Application for KeyValueStore {
             ResponseCheckTx::default()
         }
     }
-    // fn deliver_tx(&self, req: RequestDeliverTx) -> ResponseDeliverTx {
-    //     let data_str = String::from_utf8_lossy(&req.tx);
-    //     let parts: Vec<&str> = data_str.split('=').collect();
+     fn deliver_tx(&self, req: RequestDeliverTx) -> ResponseDeliverTx {
+         let data_str = String::from_utf8_lossy(&req.tx);
+         let parts: Vec<&str> = data_str.split('=').collect();
 
-    //     if parts.len() == 2 {
-    //         let user_id = parts[0].trim().to_string();
-    //         let profile_data = parts[1].trim().to_string();
+         if parts.len() == 2 {
+             let user_id = parts[0].trim().to_string();
+             let profile_data = parts[1].trim().to_string();
 
-    //         let mut storage_guard = self.storage.lock().unwrap();
-    //         storage_guard.insert(user_id, profile_data);
-    //     }
+             let mut storage_guard = self.storage.lock().unwrap();
+             storage_guard.insert(user_id, profile_data);
+         }
 
-    //     ResponseDeliverTx::default()
-    // }
+         ResponseDeliverTx::default()
+     }
 
     fn commit(&self) -> ResponseCommit {
         let storage_guard = self.storage.lock().unwrap();
